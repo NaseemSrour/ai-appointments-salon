@@ -1,0 +1,23 @@
+How to try it
+
+cd C:\Users\Naseem\Projects\ai-inventory\ai_appointments_voice
+copy .env.example .env.local
+notepad .env.local        # set VITE_OPENAI_API_KEY (Firebase can stay blank for Phase 1)
+npm install
+npm run dev -- --host
+Open https://<lan-ip>:5173 on your phone, tap through the cert warning, tap the mic, and try:
+
+"بدي أحجز موعد لصبغة"
+"التלתלים שלי صار لازمهم تجديد" (Hebrew-Arabic mix)
+"بدي تسريحة لعرس بكرا"
+You should see the IntakePanel filling in as the conversation progresses, then ServiceCards → StylistCards → SlotPicker → BookingConfirmation as the model walks through the flow and calls the tools.
+
+What to watch for during testing
+Open Chrome devtools on your laptop (chrome://inspect with the phone connected via USB) — every tool call logs to console:
+
+
+[domain] tool call: record_intake { hairType: 'curly', hairLength: 'long' }
+[domain] tool call: recommend_services {}
+[domain] tool call: check_availability { serviceId: 'svc-color', fromDate: '2026-06-08' }
+[domain] tool call: book_appointment { serviceId: '...', ... }
+If the model gets stuck or skips ahead, that log is where to look first. Once we've shaken out the conversation feel, we move to Phase 2 (Firestore wiring).
