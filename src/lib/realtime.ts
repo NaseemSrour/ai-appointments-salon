@@ -196,6 +196,22 @@ export class RealtimeClient {
     this.dc.send(JSON.stringify(event));
   }
 
+  // Inject a typed user message into the live session and ask for a response.
+  // Used when the customer taps a choice card instead of speaking.
+  sendText(text: string): boolean {
+    if (!this.dc || this.dc.readyState !== 'open') return false;
+    this.send({
+      type: 'conversation.item.create',
+      item: {
+        type: 'message',
+        role: 'user',
+        content: [{ type: 'input_text', text }],
+      },
+    });
+    this.send({ type: 'response.create' });
+    return true;
+  }
+
   private async handleEvent(raw: unknown) {
     let evt: RealtimeEvent;
     try {

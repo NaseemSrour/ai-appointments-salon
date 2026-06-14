@@ -133,6 +133,7 @@ across all qualified stylists (model can use this for "any stylist" flow).
 - **Phase 1 — ✅ done**: Everything mocked in `src/domain/`. End-to-end voice flow works. Bookings stored in memory.
 - **Phase 2 — ✅ done**: Firestore wiring. `services` + `stylists` + `settings/salon` read at startup (cached in `data/catalog.ts`); `appointments` written on book; `customers` upserted (phone-as-id). Availability rewritten to a real, duration-aware engine (`data/availability.ts`) that subtracts existing bookings from the settings working-hours window. With Firebase left blank the app still runs on bundled seed data (mock mode). Seed Firestore once via `?seed=1`.
 - **Phase 3 — ✅ done**: Three routes behind the auth gate — `/` (booking), `/admin` (management), `/display` (TV board). Admin manages appointments (status + reschedule + intake view), services, stylists, and salon settings, all live over Firestore `onSnapshot`. TV board is a read-only, auto-refreshing today view.
+- **Voice + text toggle — ✅ done**: the booking screen has a 🎙️/⌨️ toggle. Text mode (`lib/textchat.ts`) drives the *same* tools + handlers via the OpenAI Responses API — typed input captures phone numbers and mixed Arabic/Hebrew exactly. The whole domain layer is transport-agnostic, so nothing in `src/domain/` changed. Model set via `VITE_TEXT_MODEL`.
 - **Phase 4 — planned**: Admin-editable conversation flow (see below), customer return flow, SMS confirmation, App Check / production hardening.
 
 ## Phase 4 (planned): admin-editable conversation flow
@@ -241,14 +242,19 @@ Two very different cases — don't conflate them:
   in the client; it only identifies the project. Protect data with **Firestore
   security rules** + **App Check** (attestation) + optionally HTTP-referrer
   restrictions on the key in Google Cloud console. Nothing to "hide" here.
-- **The OpenAI key IS a secret and is currently exposed.** `realtime.ts` mints
-  the ephemeral token in the browser using `VITE_OPENAI_API_KEY`, so the real
-  key is in the bundle. **Fix:** move *only* the ephemeral-token POST
-  (`/v1/realtime/client_secrets`) into a **Firebase Function** (or any small
-  backend) that holds the real key server-side; the browser calls that function,
-  gets a short-lived ephemeral key, and does the WebRTC SDP exchange with it.
-  The real key never reaches the client. Gate that function so only your app /
-  authenticated sessions can call it (App Check, or require a Firebase ID token).
+- **The OpenAI key IS a secret and is currently exposed — on BOTH paths.**
+  - **Voice:** `realtime.ts` mints the ephemeral token in the browser using
+    `VITE_OPENAI_API_KEY`. **Fix:** move *only* the ephemeral-token POST
+    (`/v1/realtime/client_secrets`) into a **Firebase Function** (or any small
+    backend) that holds the real key server-side; the browser gets a short-lived
+    ephemeral key and does the WebRTC SDP exchange with it.
+  - **Text:** `textchat.ts` calls the Responses API (`/v1/responses`) directly
+    with the same browser key. **Fix:** proxy `/v1/responses` through the same
+    backend — the function injects the real key and forwards the request/response
+    (or streams it). The browser never sees the key.
+  - Either way the real key never reaches the client. Gate that function so only
+    your app / authenticated sessions can call it (App Check, or require a
+    Firebase ID token). One backend covers both voice and text.
 
 ### 4. Hosting / SPA routing
 On Firebase Hosting add a catch-all rewrite so `/admin` and `/display` resolve

@@ -3,6 +3,8 @@ import { getStylistById } from '../data/stylists';
 
 interface Props {
   slots: Slot[];
+  selectedSlot?: Slot | null;
+  onSelect?: (slot: Slot) => void;
 }
 
 const ARABIC_WEEKDAYS = ['الأحد', 'الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
@@ -13,7 +15,11 @@ function formatDate(iso: string): string {
   return `${ARABIC_WEEKDAYS[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`;
 }
 
-export function SlotPicker({ slots }: Props) {
+function sameSlot(a: Slot | null | undefined, b: Slot): boolean {
+  return !!a && a.date === b.date && a.time === b.time && a.stylistId === b.stylistId;
+}
+
+export function SlotPicker({ slots, selectedSlot, onSelect }: Props) {
   if (slots.length === 0) {
     return (
       <div className="px-4 pb-3">
@@ -34,25 +40,39 @@ export function SlotPicker({ slots }: Props) {
 
   return (
     <div className="space-y-3 px-4 pb-3">
-      <h2 className="text-sm font-semibold text-slate-500">المواعيد المتاحة</h2>
+      <h2 className="text-sm font-semibold text-slate-500">
+        المواعيد المتاحة {onSelect && <span className="font-normal">— إكبسي لتختاري</span>}
+      </h2>
       {Array.from(byDate.entries()).map(([date, daySlots]) => (
         <div key={date} className="rounded-2xl bg-white p-4 shadow-md">
           <div className="mb-2 text-sm font-bold text-slate-900">{formatDate(date)}</div>
           <div className="flex flex-wrap gap-2">
             {daySlots.map((s, i) => {
               const stylist = getStylistById(s.stylistId);
+              const selected = sameSlot(selectedSlot, s);
               return (
-                <div
+                <button
                   key={`${s.time}-${s.stylistId}-${i}`}
-                  className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-sm"
+                  type="button"
+                  onClick={() => onSelect?.(s)}
+                  disabled={!onSelect}
+                  className={`rounded-lg border px-3 py-1.5 text-sm transition ${
+                    onSelect ? 'cursor-pointer hover:border-blue-400 active:scale-95' : ''
+                  } ${
+                    selected
+                      ? 'border-blue-500 bg-blue-600 text-white'
+                      : 'border-blue-200 bg-blue-50'
+                  }`}
                 >
-                  <span dir="ltr" className="font-medium text-blue-900">{s.time}</span>
+                  <span dir="ltr" className={`font-medium ${selected ? 'text-white' : 'text-blue-900'}`}>
+                    {s.time}
+                  </span>
                   {stylist && (
-                    <span className="mr-2 text-xs text-slate-600">
+                    <span className={`mr-2 text-xs ${selected ? 'text-blue-100' : 'text-slate-600'}`}>
                       · {stylist.name}
                     </span>
                   )}
-                </div>
+                </button>
               );
             })}
           </div>

@@ -4,11 +4,11 @@
 
 ### Talk to book. The salon's AI receptionist that never misses a call.
 
-A ChatGPT-style **realtime voice assistant** that books appointments for a
-women's hair salon — the customer just *talks*, in **Palestinian Arabic**
-(with Hebrew code-switching for salon vocabulary), and the AI runs a full hair
-consultation, recommends services and stylists, finds an open slot, and books
-it. The salon sees everything live in an **admin dashboard** and on an
+A ChatGPT-style **realtime voice _and_ text assistant** that books appointments
+for a women's hair salon — the customer just *talks or types*, in **Palestinian
+Arabic** (with Hebrew code-switching for salon vocabulary), and the AI runs a
+full hair consultation, recommends services and stylists, finds an open slot,
+and books it. The salon sees everything live in an **admin dashboard** and on an
 **always-on TV board**.
 
 <br/>
@@ -35,8 +35,11 @@ Tap the mic and talk. The AI handles the rest — mixed Arabic/Hebrew, no menus,
 
 It welcomes the customer, asks about their hair (type → length → density → scalp
 → color → recent treatments → goal), recommends the right services, picks a
-qualified stylist, finds a real open slot, takes a name + phone, and confirms —
-all by voice.
+qualified stylist, finds a real open slot, takes a name + phone, and confirms.
+
+> ⌨️ **Prefer typing?** Flip the toggle — same AI, same booking flow, just typed.
+> Better for phone numbers and dropping a Hebrew word mid-sentence. Set the text
+> model with `VITE_TEXT_MODEL` (defaults to a cheap tool-capable model).
 
 ---
 
@@ -45,6 +48,7 @@ all by voice.
 | | Feature |
 |---|---|
 | 🎙️ | **Realtime voice** — ~300 ms round trip over a single WebRTC connection; the customer can interrupt mid-sentence |
+| ⌨️ | **Voice _or_ text** — a 🎙️/⌨️ toggle; typed input nails phone numbers and mid-sentence Hebrew that speech-to-text garbles, and reuses the exact same tools + booking flow |
 | 🧠 | **Smart consultation** — the model drives the conversation; the app owns the intake state via tool calls |
 | 🇵🇸 | **Palestinian Arabic** with built-in **Hebrew salon glossary** (תלתלים → curly, החלקה → straightening, צבע → color…) |
 | 📅 | **Real, duration-aware availability** — open slots = working-hours window minus actual bookings, blocking each stylist for the full service length |

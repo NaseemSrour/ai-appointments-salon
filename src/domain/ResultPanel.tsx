@@ -16,6 +16,12 @@ interface Props {
   availability: Slot[] | null;
   bookedAppointment: Appointment | null;
   bookingError: string | null;
+  selectedServiceId: string | null;
+  selectedStylistId: string | null;
+  selectedSlot: Slot | null;
+  onSelectService: (service: Service) => void;
+  onSelectStylist: (stylist: Stylist) => void;
+  onSelectSlot: (slot: Slot) => void;
 }
 
 export function ResultPanel({
@@ -25,6 +31,12 @@ export function ResultPanel({
   availability,
   bookedAppointment,
   bookingError,
+  selectedServiceId,
+  selectedStylistId,
+  selectedSlot,
+  onSelectService,
+  onSelectStylist,
+  onSelectSlot,
 }: Props) {
   return (
     <>
@@ -45,11 +57,23 @@ export function ResultPanel({
       {bookedAppointment ? (
         <BookingConfirmation appointment={bookedAppointment} />
       ) : availability ? (
-        <SlotPicker slots={availability} />
+        <SlotPicker
+          slots={availability}
+          selectedSlot={selectedSlot}
+          onSelect={onSelectSlot}
+        />
       ) : recommendedStylists ? (
-        <StylistCards stylists={recommendedStylists} />
+        <StylistCards
+          stylists={recommendedStylists}
+          selectedStylistId={selectedStylistId}
+          onSelect={onSelectStylist}
+        />
       ) : recommendedServices ? (
-        <ServiceCards services={recommendedServices} />
+        <ServiceCards
+          services={recommendedServices}
+          selectedServiceId={selectedServiceId}
+          onSelect={onSelectService}
+        />
       ) : null}
     </>
   );

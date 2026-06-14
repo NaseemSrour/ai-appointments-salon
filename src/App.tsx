@@ -6,7 +6,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Header } from './components/Header';
 import { MicButton } from './components/MicButton';
+import { type ChatMode, ModeToggle } from './components/ModeToggle';
 import { SignInPage } from './components/SignInPage';
+import { TextComposer } from './components/TextComposer';
 import { Transcript, type Turn } from './components/Transcript';
 import { AdminApp } from './admin/AdminApp';
 import { DisplayBoard } from './display/DisplayBoard';
@@ -16,10 +18,12 @@ import { signOut, watchAuthState } from './lib/auth';
 import { isFirebaseConfigured } from './lib/firebase';
 import { RealtimeClient, type RealtimeStatus } from './lib/realtime';
 import { useRoute } from './lib/router';
+import { TextClient } from './lib/textchat';
 
 const API_KEY = import.meta.env.VITE_OPENAI_API_KEY ?? '';
 const MODEL = import.meta.env.VITE_REALTIME_MODEL ?? 'gpt-realtime-mini';
 const VOICE = import.meta.env.VITE_REALTIME_VOICE ?? 'marin';
+const TEXT_MODEL = import.meta.env.VITE_TEXT_MODEL ?? 'gpt-4.1-mini';
 
 type AuthState =
   | { status: 'loading' }
@@ -88,8 +92,13 @@ function MainApp({ userEmail }: { userEmail: string }) {
   const [error, setError] = useState<string | null>(null);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [connected, setConnected] = useState(false);
+  // Text-first: typing is more accurate for phone numbers + mixed Arabic/
+  // Hebrew. The customer can switch to voice with the toggle.
+  const [mode, setMode] = useState<ChatMode>('text');
+  const [textBusy, setTextBusy] = useState(false);
 
   const clientRef = useRef<RealtimeClient | null>(null);
+  const textClientRef = useRef<TextClient | null>(null);
 
   const onTranscript = useCallback((role: 'user' | 'assistant', text: string) => {
     setTurns((prev) => [...prev, { role, text }]);
@@ -149,8 +158,72 @@ function MainApp({ userEmail }: { userEmail: string }) {
     }
   }, [connect, connected, disconnect]);
 
+  // Text mode reuses the same domain tools + handlers as voice; only the
+  // transport differs. The client is created lazily on first send.
+  const sendText = useCallback(
+    (text: string) => {
+      if (!API_KEY) {
+        setError('VITE_OPENAI_API_KEY غير مضبوط. ضيفه في .env.local وأعد التشغيل.');
+        return;
+      }
+      if (!domain.ready) {
+        setError('لسا عم نحمّل بيانات الصالون، انتظري لحظة.');
+        return;
+      }
+      if (!textClientRef.current) {
+        textClientRef.current = new TextClient({
+          apiKey: API_KEY,
+          model: TEXT_MODEL,
+          instructions: domain.systemPrompt,
+          tools: domain.tools,
+          onStatus: (s) => setTextBusy(s === 'thinking'),
+          onTranscript,
+          onToolCall: domain.handleToolCall,
+          onError: (e) => setError(e),
+        });
+      }
+      setError(null);
+      void textClientRef.current.send(text);
+    },
+    [domain, onTranscript],
+  );
+
+  const switchMode = useCallback(
+    (m: ChatMode) => {
+      if (m === mode) return;
+      if (m === 'text') void disconnect(); // stop any live voice session
+      setError(null);
+      setMode(m);
+    },
+    [mode, disconnect],
+  );
+
+  // A tapped choice card drives the conversation like a spoken/typed turn.
+  // Route it to whichever client is active.
+  const sendUtterance = useCallback(
+    (text: string) => {
+      if (mode === 'text') {
+        sendText(text); // adds the user turn + sends
+        return;
+      }
+      // Voice: only works mid-session. Show it as a user turn ourselves
+      // (injected text isn't transcribed back like speech is).
+      if (clientRef.current?.sendText(text)) {
+        onTranscript('user', text);
+      } else {
+        setError('إكبسي على المايك وابدأي المحادثة، بعدين اختاري من الكروت.');
+      }
+    },
+    [mode, sendText, onTranscript],
+  );
+
+  useEffect(() => {
+    domain.registerUtteranceSink(sendUtterance);
+  }, [domain, sendUtterance]);
+
   const clearConversation = useCallback(() => {
     setTurns([]);
+    textClientRef.current?.reset();
   }, []);
 
   const handleSignOut = useCallback(async () => {
@@ -183,13 +256,26 @@ function MainApp({ userEmail }: { userEmail: string }) {
         )}
         <Transcript
           turns={turns}
-          emptyHint={domain.emptyHint}
+          emptyHint={mode === 'text' ? 'اكتبي رسالتك تحت وابدأي' : domain.emptyHint}
           emptyExample={domain.emptyExample}
         />
         {domain.renderResultPanel()}
-        <Footer connected={connected} status={status} />
+        <Footer mode={mode} connected={connected} status={status} />
       </div>
-      <MicButton status={status} connected={connected} onClick={handleMicTap} />
+      <ModeToggle
+        mode={mode}
+        onChange={switchMode}
+        disabled={status === 'connecting' || textBusy}
+      />
+      {mode === 'voice' ? (
+        <MicButton status={status} connected={connected} onClick={handleMicTap} />
+      ) : (
+        <TextComposer
+          onSend={sendText}
+          busy={textBusy}
+          placeholder={domain.emptyExample ? `مثال: ${domain.emptyExample}` : undefined}
+        />
+      )}
     </div>
   );
 }
@@ -244,18 +330,26 @@ function SeedScreen() {
 }
 
 function Footer({
+  mode,
   connected,
   status,
 }: {
+  mode: ChatMode;
   connected: boolean;
   status: RealtimeStatus;
 }) {
   return (
     <div className="px-6 py-4 text-center text-xs text-slate-500">
-      <div>
-        Model: {MODEL} · Voice: {VOICE}
-      </div>
-      <div>{connected ? `connected (${status})` : 'disconnected'}</div>
+      {mode === 'voice' ? (
+        <>
+          <div>
+            Model: {MODEL} · Voice: {VOICE}
+          </div>
+          <div>{connected ? `connected (${status})` : 'disconnected'}</div>
+        </>
+      ) : (
+        <div>Model: {TEXT_MODEL} · كتابة</div>
+      )}
     </div>
   );
 }

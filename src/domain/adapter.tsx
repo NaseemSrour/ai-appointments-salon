@@ -30,6 +30,12 @@ export interface DomainAdapter {
   tools: unknown[];
   handleToolCall: (call: { name: string; args: unknown }) => Promise<unknown>;
   renderResultPanel: () => ReactNode;
+  /**
+   * App registers a function that injects a user utterance into the active
+   * voice/text session. Tapping a choice card calls it so the conversation
+   * continues as if the customer had said the choice.
+   */
+  registerUtteranceSink: (fn: (text: string) => void) => void;
   /** False until the catalog (services/stylists/settings) has loaded. */
   ready: boolean;
   /** Set when catalog loading failed. */
@@ -51,9 +57,58 @@ export function useDomainAdapter(): DomainAdapter {
   const [bookedAppointment, setBookedAppointment] = useState<Appointment | null>(null);
   const [bookingError, setBookingError] = useState<string | null>(null);
 
+  // Tap-to-pick selection. State drives the highlight; the ref is the source
+  // of truth read by book_appointment (so a tapped slot's exact date/time/
+  // stylist can never be mangled by the model).
+  const [selectedServiceId, setSelectedServiceId] = useState<string | null>(null);
+  const [selectedStylistId, setSelectedStylistId] = useState<string | null>(null);
+  const [selectedSlot, setSelectedSlot] = useState<Slot | null>(null);
+
   // Refs let tool handlers read latest values without re-creating handlers
   // on every state change.
   const intakeRef = useRef<Intake>({});
+  const selectionRef = useRef<{
+    serviceId: string | null;
+    stylistId: string | null;
+    slot: Slot | null;
+  }>({ serviceId: null, stylistId: null, slot: null });
+
+  // App wires this to the active voice/text client (see registerUtteranceSink).
+  const utteranceSinkRef = useRef<((text: string) => void) | null>(null);
+  const registerUtteranceSink = useCallback((fn: (text: string) => void) => {
+    utteranceSinkRef.current = fn;
+  }, []);
+
+  function clearSelection() {
+    selectionRef.current = { serviceId: null, stylistId: null, slot: null };
+    setSelectedServiceId(null);
+    setSelectedStylistId(null);
+    setSelectedSlot(null);
+  }
+
+  // --- TAP-TO-PICK HANDLERS --------------------------------------------
+  const onSelectService = useCallback((svc: Service) => {
+    selectionRef.current.serviceId = svc.id;
+    setSelectedServiceId(svc.id);
+    utteranceSinkRef.current?.(`اخترت خدمة: ${svc.name}`);
+  }, []);
+
+  const onSelectStylist = useCallback((st: Stylist) => {
+    selectionRef.current.stylistId = st.id;
+    setSelectedStylistId(st.id);
+    utteranceSinkRef.current?.(`اخترت المصففة: ${st.name}`);
+  }, []);
+
+  const onSelectSlot = useCallback((slot: Slot) => {
+    selectionRef.current.slot = slot;
+    selectionRef.current.stylistId = slot.stylistId;
+    setSelectedSlot(slot);
+    setSelectedStylistId(slot.stylistId);
+    const name = getStylistById(slot.stylistId)?.name ?? '';
+    utteranceSinkRef.current?.(
+      `اخترت موعد: ${slotLabelAr(slot.date)} الساعة ${slot.time}${name ? ` مع ${name}` : ''}`,
+    );
+  }, []);
 
   // --- TOOL HANDLERS ---------------------------------------------------
   const handleToolCall = useCallback(
@@ -167,8 +222,12 @@ export function useDomainAdapter(): DomainAdapter {
 
     setAvailability(slots);
     return {
+      // weekday + dateLabel are provided so the model never has to derive the
+      // day-of-week from the ISO date (which it gets wrong). Use them verbatim.
       slots: slots.map((s) => ({
         date: s.date,
+        weekday: weekdayAr(s.date),
+        dateLabel: slotLabelAr(s.date),
         time: s.time,
         stylistId: s.stylistId,
         stylistName: getStylistById(s.stylistId)?.name ?? '',
@@ -189,25 +248,27 @@ export function useDomainAdapter(): DomainAdapter {
     // Clear any previous failure as we start a fresh attempt.
     setBookingError(null);
 
-    if (
-      !args.serviceId ||
-      !args.stylistId ||
-      !args.date ||
-      !args.time ||
-      !args.customerName ||
-      !args.customerPhone
-    ) {
+    // A tapped slot is authoritative: its exact date/time/stylist override
+    // whatever the model passes, so a misheard or miscomputed date can't slip
+    // through. A tapped service likewise fills in the serviceId.
+    const sel = selectionRef.current;
+    const serviceId = args.serviceId ?? sel.serviceId ?? undefined;
+    const stylistId = sel.slot?.stylistId ?? args.stylistId ?? sel.stylistId ?? undefined;
+    const date = sel.slot?.date ?? args.date;
+    const time = sel.slot?.time ?? args.time;
+
+    if (!serviceId || !stylistId || !date || !time || !args.customerName || !args.customerPhone) {
       return { ok: false, error: 'missing required fields' };
     }
-    const svc = getServiceById(args.serviceId);
-    const stylist = getStylistById(args.stylistId);
+    const svc = getServiceById(serviceId);
+    const stylist = getStylistById(stylistId);
     if (!svc || !stylist) {
       return { ok: false, error: 'invalid serviceId or stylistId' };
     }
 
     // Guard against booking a day that already passed (model sometimes invents
     // a date). Availability never offers past days, so reject here too.
-    if (args.date < todayIso()) {
+    if (date < todayIso()) {
       const message = 'ما بنقدر نحجز بتاريخ قديم، اختاري يوم من المواعيد المتاحة';
       setBookingError(message);
       return { ok: false, error: 'past_date', message };
@@ -220,7 +281,7 @@ export function useDomainAdapter(): DomainAdapter {
     try {
       // Re-check the slot at commit time — it may have been taken since
       // check_availability ran.
-      const slot: Slot = { date: args.date, time: args.time, stylistId: stylist.id };
+      const slot: Slot = { date, time, stylistId: stylist.id };
       const open = await isSlotOpen(slot, svc.durationMinutes);
       if (!open) {
         const message = 'هاد الموعد ما عاد متاح، اقترحي وقت ثاني';
@@ -233,8 +294,8 @@ export function useDomainAdapter(): DomainAdapter {
         serviceName: svc.name,
         stylistId: stylist.id,
         stylistName: stylist.name,
-        date: args.date,
-        time: args.time,
+        date,
+        time,
         durationMinutes: svc.durationMinutes,
         priceILS: svc.priceILS,
         customerName: args.customerName,
@@ -254,6 +315,7 @@ export function useDomainAdapter(): DomainAdapter {
         intake: intakeRef.current,
       }).catch((e) => console.warn('[domain] upsertCustomer failed', e));
 
+      clearSelection();
       setBookedAppointment(appointment);
       return { ok: true, appointment };
     } catch (e) {
@@ -286,6 +348,12 @@ export function useDomainAdapter(): DomainAdapter {
         availability={availability}
         bookedAppointment={bookedAppointment}
         bookingError={bookingError}
+        selectedServiceId={selectedServiceId}
+        selectedStylistId={selectedStylistId}
+        selectedSlot={selectedSlot}
+        onSelectService={onSelectService}
+        onSelectStylist={onSelectStylist}
+        onSelectSlot={onSelectSlot}
       />
     ),
     [
@@ -295,6 +363,12 @@ export function useDomainAdapter(): DomainAdapter {
       availability,
       bookedAppointment,
       bookingError,
+      selectedServiceId,
+      selectedStylistId,
+      selectedSlot,
+      onSelectService,
+      onSelectStylist,
+      onSelectSlot,
     ],
   );
 
@@ -303,6 +377,7 @@ export function useDomainAdapter(): DomainAdapter {
     tools,
     handleToolCall,
     renderResultPanel,
+    registerUtteranceSink,
     ready,
     catalogError,
     appTitle: 'مساعد الحجوزات',
@@ -312,6 +387,30 @@ export function useDomainAdapter(): DomainAdapter {
     emptyHint: 'إكبسي عالميكروفون واحكي',
     emptyExample: 'بدي أحجز موعد لصبغة',
   };
+}
+
+// --- Date labels ----------------------------------------------------------
+// The model is bad at deriving a weekday from an ISO date, so we hand it the
+// weekday name with every slot and use the same label in tap confirmations.
+const WEEKDAYS_AR = [
+  'الأحد',
+  'الإثنين',
+  'الثلاثاء',
+  'الأربعاء',
+  'الخميس',
+  'الجمعة',
+  'السبت',
+];
+
+function weekdayAr(dateIso: string): string {
+  const d = new Date(dateIso + 'T00:00:00');
+  return Number.isNaN(d.getTime()) ? '' : WEEKDAYS_AR[d.getDay()];
+}
+
+function slotLabelAr(dateIso: string): string {
+  const d = new Date(dateIso + 'T00:00:00');
+  if (Number.isNaN(d.getTime())) return dateIso;
+  return `${WEEKDAYS_AR[d.getDay()]} ${d.getDate()}/${d.getMonth() + 1}`;
 }
 
 // --- Service ranking ------------------------------------------------------
