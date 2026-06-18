@@ -101,7 +101,7 @@ function MainApp({ userEmail }: { userEmail: string }) {
   const textClientRef = useRef<TextClient | null>(null);
 
   const onTranscript = useCallback((role: 'user' | 'assistant', text: string) => {
-    setTurns((prev) => [...prev, { role, text }]);
+    setTurns((prev) => [...prev, { role, text, at: Date.now() }]);
   }, []);
 
   const connect = useCallback(async () => {
@@ -240,15 +240,16 @@ function MainApp({ userEmail }: { userEmail: string }) {
   }, []);
 
   return (
-    <div className="flex h-full flex-col bg-slate-50" dir="rtl">
+    <div className="flex h-full flex-col bg-[#f0f2f5]" dir="rtl">
       <Header
         title={domain.appTitle}
+        avatarEmoji={domain.signInIconEmoji}
         hasHistory={turns.length > 0}
         userEmail={userEmail === 'mock' ? null : userEmail}
         onClear={clearConversation}
         onSignOut={handleSignOut}
       />
-      <div className="flex-1 overflow-y-auto">
+      <div className="chat-bg flex-1 overflow-y-auto">
         {error && (
           <div className="mx-4 mt-3 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
             {error}

@@ -12,7 +12,7 @@ const visuals: Record<
   RealtimeStatus,
   { color: string; label: string; icon: string }
 > = {
-  idle: { color: 'bg-blue-600', label: 'إكبس وابدأ', icon: '🎙️' },
+  idle: { color: 'bg-[#00a884]', label: 'إكبس وابدأ', icon: '🎙️' },
   connecting: { color: 'bg-amber-600', label: 'عم اتصل...', icon: '⏳' },
   listening: { color: 'bg-red-600', label: 'عم اسمعك', icon: '🎤' },
   thinking: { color: 'bg-amber-600', label: 'ثانية...', icon: '💭' },
@@ -27,7 +27,7 @@ export function MicButton({ status, connected, onClick }: Props) {
   const live = status === 'listening';
 
   return (
-    <div className="border-t border-slate-200 bg-white pb-[env(safe-area-inset-bottom)] pt-3">
+    <div className="bg-[#f0f2f5] pb-[env(safe-area-inset-bottom)] pt-3">
       <div className="px-4 pb-4">
         <button
           type="button"

@@ -22,7 +22,7 @@ export function TextComposer({ onSend, busy, placeholder }: Props) {
   return (
     <form
       onSubmit={submit}
-      className="flex items-end gap-2 border-t border-slate-200 bg-white px-4 pb-[max(env(safe-area-inset-bottom),1rem)] pt-3"
+      className="flex items-end gap-2 bg-[#f0f2f5] px-2 pb-[max(env(safe-area-inset-bottom),0.5rem)] pt-2"
     >
       <input
         type="text"
@@ -30,12 +30,12 @@ export function TextComposer({ onSend, busy, placeholder }: Props) {
         onChange={(e) => setText(e.target.value)}
         placeholder={placeholder ?? 'اكتب رسالتك...'}
         enterKeyHint="send"
-        className="flex-1 rounded-2xl border border-slate-300 px-4 py-3 text-base focus:border-blue-500 focus:outline-none"
+        className="flex-1 rounded-full bg-white px-4 py-3 text-base shadow-sm focus:outline-none"
       />
       <button
         type="submit"
         disabled={busy || !text.trim()}
-        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-blue-600 text-xl text-white shadow transition active:scale-95 disabled:opacity-40"
+        className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#00a884] text-xl text-white shadow transition active:scale-95 disabled:opacity-50"
         aria-label="إرسال"
       >
         {busy ? '⏳' : '➤'}
